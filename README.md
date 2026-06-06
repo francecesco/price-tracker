@@ -10,7 +10,7 @@ Bot Telegram self-hosted che monitora i prezzi dei prodotti Amazon.it. Legge una
 
 - Importa automaticamente i prodotti da una wishlist pubblica Amazon.it
 - Aggiunta manuale di prodotti tramite URL Amazon
-- Controllo prezzi automatico ogni 4 ore (configurabile)
+- Controllo prezzi automatico ogni 30 minuti (configurabile)
 - Allerta Telegram quando il prezzo scende sotto il target impostato
 - Report settimanale ogni venerdì alle 19:00 (giorno e orario configurabili)
 - Scraping diretto di Amazon.it — nessuna API esterna, nessun servizio a pagamento
@@ -58,7 +58,7 @@ Bot Telegram self-hosted che monitora i prezzi dei prodotti Amazon.it. Legge una
 | `TELEGRAM_BOT_TOKEN` | Sì | — | Token del bot fornito da BotFather |
 | `TELEGRAM_CHAT_ID` | Sì | — | Il tuo Telegram user ID numerico |
 | `AMAZON_WISHLIST_URL` | Sì | — | URL della wishlist pubblica Amazon.it |
-| `CHECK_INTERVAL_HOURS` | No | `4` | Ore tra un controllo prezzi e il successivo |
+| `CHECK_INTERVAL_MINUTES` | No | `30` | Minuti tra un controllo prezzi e il successivo |
 | `REPORT_DAY` | No | `friday` | Giorno della settimana per il report (in inglese) |
 | `REPORT_TIME` | No | `19:00` | Orario del report settimanale (formato HH:MM) |
 | `DB_PATH` | No | `/app/data/tracker.db` | Percorso del database SQLite (interno al container) |
@@ -88,7 +88,7 @@ Apri `.env` con un editor e inserisci i valori ottenuti nella sezione Configuraz
 TELEGRAM_BOT_TOKEN=123456789:AABBccDDeeFFggHH...
 TELEGRAM_CHAT_ID=987654321
 AMAZON_WISHLIST_URL=https://www.amazon.it/hz/wishlist/ls/XXXXXXXXXXXXXX
-CHECK_INTERVAL_HOURS=4
+CHECK_INTERVAL_MINUTES=30
 REPORT_DAY=friday
 REPORT_TIME=19:00
 ```

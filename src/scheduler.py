@@ -1,3 +1,5 @@
+import asyncio
+import random
 from datetime import datetime, timedelta
 from typing import Optional, Callable
 import logging
@@ -42,6 +44,7 @@ async def run_price_check(db_path: str, send_alert: Callable) -> int:
 
         previous_price = product.current_price
         update_product_price(db_path, product.id, price)
+        await asyncio.sleep(random.uniform(1.0, 3.0))
 
         if product.target_price and should_send_alert(
             price, product.target_price,
@@ -91,14 +94,14 @@ _DAY_MAP = {
 
 
 def create_scheduler(
-    check_interval_hours: int,
+    check_interval_minutes: int,
     report_day: str,
     report_time: str,
     price_check_job: Callable,
     weekly_report_job: Callable,
 ) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(price_check_job, "interval", hours=check_interval_hours, id="price_check")
+    scheduler.add_job(price_check_job, "interval", minutes=check_interval_minutes, id="price_check")
     hour, minute = map(int, report_time.split(":"))
     scheduler.add_job(
         weekly_report_job, "cron",

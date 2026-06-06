@@ -33,7 +33,7 @@ def main() -> None:
             await run_weekly_report(config.db_path, send_message)
 
         scheduler = create_scheduler(
-            config.check_interval_hours,
+            config.check_interval_minutes,
             config.report_day,
             config.report_time,
             price_check_job,
@@ -43,8 +43,8 @@ def main() -> None:
         app.bot_data["scheduler"] = scheduler
         scheduler.start()
         logger.info(
-            "Scheduler avviato: check ogni %dh, report %s alle %s",
-            config.check_interval_hours, config.report_day, config.report_time,
+            "Scheduler avviato: check ogni %dmin, report %s alle %s",
+            config.check_interval_minutes, config.report_day, config.report_time,
         )
 
     app = build_application(
