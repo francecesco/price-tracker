@@ -1,4 +1,5 @@
 import re
+import logging
 from typing import Optional
 import requests
 from bs4 import BeautifulSoup
@@ -27,8 +28,12 @@ def scrape_wishlist(wishlist_url: str) -> list:
     items = []
     url = wishlist_url
     while url:
-        response = requests.get(url, headers=_HEADERS, timeout=15)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=_HEADERS, timeout=15)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            logging.getLogger(__name__).warning("Errore scraping wishlist %s: %s", url, e)
+            break
         soup = BeautifulSoup(response.text, "html.parser")
         items.extend(_extract_items_from_wishlist_page(soup))
         url = _get_next_page_url(soup, wishlist_url)
