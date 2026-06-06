@@ -4,10 +4,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-try:
-    from scraper import fetch_current_price
-except ImportError:
-    fetch_current_price = None  # type: ignore[assignment]
+from scraper import fetch_current_price
 
 
 
