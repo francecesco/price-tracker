@@ -435,151 +435,7 @@ git commit -m "feat: database layer with SQLite"
 
 ---
 
-## Task 4: Keepa Client
-
-**Files:**
-- Create: `src/keepa_client.py`
-- Create: `tests/test_keepa_client.py`
-
-- [ ] **Step 1: Scrivi test_keepa_client.py**
-
-```python
-import pytest
-from keepa_client import extract_asin_from_url, _extract_current_price
-
-def test_extract_asin_standard_url():
-    url = "https://www.amazon.it/Sony-WH-1000XM5/dp/B09XS7JWHH/ref=sr_1_1"
-    assert extract_asin_from_url(url) == "B09XS7JWHH"
-
-def test_extract_asin_short_url():
-    url = "https://www.amazon.it/dp/B09XS7JWHH"
-    assert extract_asin_from_url(url) == "B09XS7JWHH"
-
-def test_extract_asin_invalid_url():
-    assert extract_asin_from_url("https://www.amazon.it/") is None
-
-def test_extract_asin_non_amazon_url():
-    assert extract_asin_from_url("https://www.google.com/dp/B09XS7JWHH") == "B09XS7JWHH"
-
-def test_extract_current_price_amazon_price():
-    # Keepa CSV format: list of [timestamp, price, timestamp, price, ...]
-    # Price index 0 = AMAZON, values in cents (219.99 -> 21999)
-    product = {
-        "csv": [
-            [1000, 25000, 2000, 21999],  # AMAZON: last price = 219.99
-        ]
-    }
-    assert _extract_current_price(product) == pytest.approx(219.99)
-
-def test_extract_current_price_fallback_to_new():
-    # AMAZON unavailable (-1), fallback to NEW (index 7)
-    csv = [None] * 8
-    csv[0] = [1000, -1]         # AMAZON unavailable
-    csv[7] = [1000, 18999]      # NEW: 189.99
-    product = {"csv": csv}
-    assert _extract_current_price(product) == pytest.approx(189.99)
-
-def test_extract_current_price_all_unavailable():
-    csv = [None] * 8
-    csv[0] = [1000, -1]
-    csv[7] = [1000, -1]
-    product = {"csv": csv}
-    assert _extract_current_price(product) is None
-
-def test_extract_current_price_no_csv():
-    assert _extract_current_price({}) is None
-```
-
-- [ ] **Step 2: Esegui i test — devono fallire**
-
-```bash
-pytest tests/test_keepa_client.py -v
-```
-
-Expected: `ModuleNotFoundError: No module named 'keepa_client'`
-
-- [ ] **Step 3: Crea src/keepa_client.py**
-
-```python
-import re
-from typing import Optional
-import keepa as keepa_lib
-
-# amazon.it = dominio 8 nell'API Keepa
-KEEPA_DOMAIN_IT = 8
-
-
-def extract_asin_from_url(url: str) -> Optional[str]:
-    match = re.search(r"/dp/([A-Z0-9]{10})", url)
-    return match.group(1) if match else None
-
-
-def _extract_current_price(product: dict) -> Optional[float]:
-    """Estrae il prezzo corrente dal formato CSV Keepa.
-    
-    CSV format: lista dove ogni elemento è [time1, price1, time2, price2, ...]
-    Index 0 = AMAZON price, index 7 = NEW (marketplace)
-    Prezzi in centesimi (dividi per 100). -1 = non disponibile.
-    """
-    csv = product.get("csv") or []
-    for price_idx in [0, 7]:
-        if price_idx >= len(csv) or not csv[price_idx]:
-            continue
-        prices = csv[price_idx]
-        # Gli elementi dispari sono i prezzi (0-indexed: timestamp, price, timestamp, price...)
-        price_values = prices[1::2]
-        for price in reversed(price_values):
-            if price != -1:
-                return price / 100.0
-    return None
-
-
-def get_product_info(api_key: str, asin: str) -> Optional[dict]:
-    """Ritorna dict con asin, name, url, current_price. None se non trovato."""
-    api = keepa_lib.Keepa(api_key)
-    products = api.query([asin], domain=KEEPA_DOMAIN_IT, history=True)
-    if not products:
-        return None
-    return _parse_product(products[0])
-
-
-def get_products_info(api_key: str, asins: list) -> list:
-    """Ritorna lista di dict per ogni ASIN. Prodotti non trovati vengono saltati."""
-    if not asins:
-        return []
-    api = keepa_lib.Keepa(api_key)
-    products = api.query(asins, domain=KEEPA_DOMAIN_IT, history=True)
-    return [_parse_product(p) for p in products if p]
-
-
-def _parse_product(product: dict) -> dict:
-    asin = product.get("asin", "")
-    return {
-        "asin": asin,
-        "name": product.get("title") or "Prodotto senza nome",
-        "url": f"https://www.amazon.it/dp/{asin}",
-        "current_price": _extract_current_price(product),
-    }
-```
-
-- [ ] **Step 4: Esegui i test — devono passare**
-
-```bash
-pytest tests/test_keepa_client.py -v
-```
-
-Expected: tutti `PASSED`.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add src/keepa_client.py tests/test_keepa_client.py
-git commit -m "feat: keepa API client"
-```
-
----
-
-## Task 5: Wishlist Scraper
+## Task 5: Scraper (Wishlist + Price Fetching)
 
 **Files:**
 - Create: `src/scraper.py`
@@ -588,58 +444,78 @@ git commit -m "feat: keepa API client"
 - [ ] **Step 1: Scrivi test_scraper.py**
 
 ```python
+import pytest
 from bs4 import BeautifulSoup
-from scraper import _extract_asins_from_page, _get_next_page_url
+from scraper import _extract_asins_from_page, _get_next_page_url, _parse_price_text, _extract_items_from_wishlist_page, _extract_price_from_product_page
 
-WISHLIST_HTML_PAGE1 = """
+WISHLIST_HTML = """
 <html><body>
-  <a href="/Sony-Headphones/dp/B09XS7JWHH/ref=wl_it_dp">Sony</a>
-  <a href="/iPad/dp/B0BJLF2BRM/ref=wl_it_dp">iPad</a>
-  <div data-asin="B07FZ8S74R">Kindle</div>
-  <a href="/not-a-product">Other link</a>
+  <li data-id="item1">
+    <a id="itemName_item1" href="/Sony/dp/B09XS7JWHH/ref=wl">Sony WH-1000XM5</a>
+    <span data-asin="B09XS7JWHH"></span>
+    <span class="a-price"><span class="a-offscreen">€ 219,99</span></span>
+  </li>
+  <li data-id="item2">
+    <a id="itemName_item2" href="/iPad/dp/B0BJLF2BRM/ref=wl">iPad Air</a>
+    <span data-asin="B0BJLF2BRM"></span>
+    <span class="a-price"><span class="a-offscreen">€ 749,00</span></span>
+  </li>
   <a id="wishlistPaginationBar-next" href="/hz/wishlist/ls/ABC?page=2">Next</a>
 </body></html>
 """
 
-WISHLIST_HTML_LAST_PAGE = """
+PRODUCT_PAGE_HTML = """
 <html><body>
-  <a href="/Logitech/dp/B08WKFNBBD/ref=wl_it_dp">Mouse</a>
+  <div id="corePriceDisplay_desktop_feature_div">
+    <span class="a-price"><span class="a-offscreen">€ 219,99</span></span>
+  </div>
 </body></html>
 """
 
-def test_extract_asins_from_page():
-    soup = BeautifulSoup(WISHLIST_HTML_PAGE1, "html.parser")
-    asins = _extract_asins_from_page(soup)
+def test_parse_price_text_euro_comma():
+    assert _parse_price_text("€ 219,99") == pytest.approx(219.99)
+
+def test_parse_price_text_dot_separator():
+    assert _parse_price_text("219.99") == pytest.approx(219.99)
+
+def test_parse_price_text_no_price():
+    assert _parse_price_text("Nessun prezzo") is None
+
+def test_extract_items_from_wishlist_page():
+    soup = BeautifulSoup(WISHLIST_HTML, "html.parser")
+    items = _extract_items_from_wishlist_page(soup)
+    assert len(items) == 2
+    asins = [i["asin"] for i in items]
     assert "B09XS7JWHH" in asins
     assert "B0BJLF2BRM" in asins
-    assert "B07FZ8S74R" in asins
 
-def test_extract_asins_deduplicates():
-    html = """
-    <html><body>
-      <a href="/dp/B09XS7JWHH">Link 1</a>
-      <a href="/dp/B09XS7JWHH/ref=foo">Link 2</a>
-    </body></html>
-    """
-    soup = BeautifulSoup(html, "html.parser")
-    asins = _extract_asins_from_page(soup)
-    assert asins.count("B09XS7JWHH") == 1
+def test_extract_items_prices():
+    soup = BeautifulSoup(WISHLIST_HTML, "html.parser")
+    items = _extract_items_from_wishlist_page(soup)
+    sony = next(i for i in items if i["asin"] == "B09XS7JWHH")
+    assert sony["price"] == pytest.approx(219.99)
+    assert "Sony" in sony["name"]
+
+def test_extract_price_from_product_page():
+    soup = BeautifulSoup(PRODUCT_PAGE_HTML, "html.parser")
+    price = _extract_price_from_product_page(soup)
+    assert price == pytest.approx(219.99)
 
 def test_get_next_page_url_present():
-    soup = BeautifulSoup(WISHLIST_HTML_PAGE1, "html.parser")
-    next_url = _get_next_page_url(soup, "https://www.amazon.it/hz/wishlist/ls/ABC")
-    assert next_url is not None
-    assert "page=2" in next_url
+    soup = BeautifulSoup(WISHLIST_HTML, "html.parser")
+    url = _get_next_page_url(soup, "https://www.amazon.it/hz/wishlist/ls/ABC")
+    assert url is not None
+    assert "page=2" in url
 
 def test_get_next_page_url_absent():
-    soup = BeautifulSoup(WISHLIST_HTML_LAST_PAGE, "html.parser")
+    soup = BeautifulSoup("<html><body></body></html>", "html.parser")
     assert _get_next_page_url(soup, "https://www.amazon.it/hz/wishlist/ls/ABC") is None
 ```
 
 - [ ] **Step 2: Esegui i test — devono fallire**
 
 ```bash
-pytest tests/test_scraper.py -v
+cd /Users/francesconegretti/Development/price-tracker && python -m pytest tests/test_scraper.py -v
 ```
 
 Expected: `ModuleNotFoundError: No module named 'scraper'`
@@ -662,29 +538,109 @@ _HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
+# Multiple price selectors in order of preference (Amazon changes HTML occasionally)
+_PRICE_SELECTORS = [
+    "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
+    "#apex_desktop .a-price .a-offscreen",
+    "#priceblock_ourprice",
+    "#priceblock_dealprice",
+    ".a-price .a-offscreen",
+]
 
-def scrape_wishlist_asins(wishlist_url: str) -> list:
-    """Scarica la wishlist pubblica e ritorna la lista di ASIN, gestendo la paginazione."""
-    asins = []
+
+def scrape_wishlist(wishlist_url: str) -> list:
+    """Scarica la wishlist pubblica e ritorna lista di {asin, name, url, price}."""
+    items = []
     url = wishlist_url
     while url:
         response = requests.get(url, headers=_HEADERS, timeout=15)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
-        asins.extend(_extract_asins_from_page(soup))
+        items.extend(_extract_items_from_wishlist_page(soup))
         url = _get_next_page_url(soup, wishlist_url)
-    return list(dict.fromkeys(asins))  # deduplica preservando ordine
+    seen = set()
+    unique = []
+    for item in items:
+        if item["asin"] not in seen:
+            seen.add(item["asin"])
+            unique.append(item)
+    return unique
 
 
-def _extract_asins_from_page(soup: BeautifulSoup) -> list:
-    asins = []
-    for link in soup.find_all("a", href=re.compile(r"/dp/[A-Z0-9]{10}")):
-        match = re.search(r"/dp/([A-Z0-9]{10})", link["href"])
-        if match:
-            asins.append(match.group(1))
-    for el in soup.find_all(attrs={"data-asin": re.compile(r"^[A-Z0-9]{10}$")}):
-        asins.append(el["data-asin"])
-    return list(dict.fromkeys(asins))
+def fetch_product_info(product_url: str) -> Optional[dict]:
+    """Recupera nome, ASIN e prezzo da una singola pagina prodotto Amazon."""
+    try:
+        response = requests.get(product_url, headers=_HEADERS, timeout=15)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        asin = _extract_asin_from_url(product_url)
+        name_el = soup.find("span", {"id": "productTitle"})
+        name = name_el.get_text(strip=True) if name_el else "Prodotto senza nome"
+        price = _extract_price_from_product_page(soup)
+        if not asin:
+            return None
+        return {"asin": asin, "name": name, "url": product_url, "price": price}
+    except Exception:
+        return None
+
+
+def fetch_current_price(product_url: str) -> Optional[float]:
+    """Recupera solo il prezzo corrente da una pagina prodotto Amazon."""
+    try:
+        response = requests.get(product_url, headers=_HEADERS, timeout=15)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        return _extract_price_from_product_page(soup)
+    except Exception:
+        return None
+
+
+def _extract_items_from_wishlist_page(soup: BeautifulSoup) -> list:
+    items = []
+    for item_el in soup.find_all("li", attrs={"data-id": True}):
+        asin_el = item_el.find(attrs={"data-asin": re.compile(r"^[A-Z0-9]{10}$")})
+        if not asin_el:
+            continue
+        asin = asin_el.get("data-asin")
+        name_el = item_el.find("a", {"id": re.compile(r"itemName")})
+        name = name_el.get_text(strip=True) if name_el else "Prodotto senza nome"
+        price = None
+        price_el = item_el.find(class_="a-price")
+        if price_el:
+            offscreen = price_el.find(class_="a-offscreen")
+            if offscreen:
+                price = _parse_price_text(offscreen.get_text(strip=True))
+        items.append({"asin": asin, "name": name, "url": f"https://www.amazon.it/dp/{asin}", "price": price})
+    return items
+
+
+def _extract_price_from_product_page(soup: BeautifulSoup) -> Optional[float]:
+    for selector in _PRICE_SELECTORS:
+        el = soup.select_one(selector)
+        if el:
+            price = _parse_price_text(el.get_text(strip=True))
+            if price is not None:
+                return price
+    return None
+
+
+def _parse_price_text(text: str) -> Optional[float]:
+    match = re.search(r"(\d+)[.,](\d{2})", text.replace(".", "").replace(",", ".").strip())
+    if match:
+        try:
+            return float(f"{match.group(1)}.{match.group(2)}")
+        except ValueError:
+            pass
+    # fallback: cerca pattern numerico semplice dopo sostituzione
+    clean = re.sub(r"[^\d.,]", "", text)
+    clean = clean.replace(".", "").replace(",", ".")
+    match2 = re.search(r"\d+\.\d{2}", clean)
+    if match2:
+        try:
+            return float(match2.group())
+        except ValueError:
+            pass
+    return None
 
 
 def _get_next_page_url(soup: BeautifulSoup, base_url: str) -> Optional[str]:
@@ -694,15 +650,18 @@ def _get_next_page_url(soup: BeautifulSoup, base_url: str) -> Optional[str]:
     href = next_link.get("href", "")
     if not href:
         return None
-    if href.startswith("http"):
-        return href
-    return "https://www.amazon.it" + href
+    return href if href.startswith("http") else "https://www.amazon.it" + href
+
+
+def _extract_asin_from_url(url: str) -> Optional[str]:
+    match = re.search(r"/dp/([A-Z0-9]{10})", url)
+    return match.group(1) if match else None
 ```
 
 - [ ] **Step 4: Esegui i test — devono passare**
 
 ```bash
-pytest tests/test_scraper.py -v
+cd /Users/francesconegretti/Development/price-tracker && python -m pytest tests/test_scraper.py -v
 ```
 
 Expected: tutti `PASSED`.
@@ -711,7 +670,7 @@ Expected: tutti `PASSED`.
 
 ```bash
 git add src/scraper.py tests/test_scraper.py
-git commit -m "feat: Amazon wishlist scraper"
+git commit -m "feat: scraper with wishlist import and price fetching"
 ```
 
 ---
@@ -836,11 +795,10 @@ async def test_run_price_check_sends_alert_when_below_target(tmp_db):
     p = add_product(tmp_db, "B09XS7JWHH", "Sony", "https://amazon.it/dp/B09XS7JWHH", 250.0, "manual")
     update_product_target(tmp_db, p.id, 220.0)
 
-    fake_info = {"asin": "B09XS7JWHH", "name": "Sony", "url": "https://amazon.it/dp/B09XS7JWHH", "current_price": 200.0}
     send_alert = AsyncMock()
 
-    with patch("scheduler.get_products_info", return_value=[fake_info]):
-        count = await run_price_check(tmp_db, "fake_key", send_alert)
+    with patch("scheduler.fetch_current_price", return_value=200.0):
+        count = await run_price_check(tmp_db, send_alert)
 
     assert count == 1
     send_alert.assert_called_once()
@@ -854,11 +812,10 @@ async def test_run_price_check_no_alert_above_target(tmp_db):
     p = add_product(tmp_db, "B09XS7JWHH", "Sony", "https://amazon.it/dp/B09XS7JWHH", 250.0, "manual")
     update_product_target(tmp_db, p.id, 180.0)
 
-    fake_info = {"asin": "B09XS7JWHH", "name": "Sony", "url": "https://amazon.it/dp/B09XS7JWHH", "current_price": 200.0}
     send_alert = AsyncMock()
 
-    with patch("scheduler.get_products_info", return_value=[fake_info]):
-        count = await run_price_check(tmp_db, "fake_key", send_alert)
+    with patch("scheduler.fetch_current_price", return_value=200.0):
+        count = await run_price_check(tmp_db, send_alert)
 
     assert count == 0
     send_alert.assert_not_called()
@@ -868,11 +825,10 @@ async def test_run_price_check_no_alert_above_target(tmp_db):
 async def test_run_price_check_no_alert_without_target(tmp_db):
     add_product(tmp_db, "B09XS7JWHH", "Sony", "https://amazon.it/dp/B09XS7JWHH", 250.0, "manual")
 
-    fake_info = {"asin": "B09XS7JWHH", "name": "Sony", "url": "https://amazon.it/dp/B09XS7JWHH", "current_price": 100.0}
     send_alert = AsyncMock()
 
-    with patch("scheduler.get_products_info", return_value=[fake_info]):
-        count = await run_price_check(tmp_db, "fake_key", send_alert)
+    with patch("scheduler.fetch_current_price", return_value=100.0):
+        count = await run_price_check(tmp_db, send_alert)
 
     assert count == 0
     send_alert.assert_not_called()
@@ -916,35 +872,31 @@ Aggiungi in fondo al file esistente:
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 
-async def run_price_check(db_path: str, keepa_api_key: str, send_alert: Callable) -> int:
+async def run_price_check(db_path: str, send_alert: Callable) -> int:
     from database import get_all_products, update_product_price, update_last_alert
-    from keepa_client import get_products_info
+    from scraper import fetch_current_price
 
     products = get_all_products(db_path)
     if not products:
         return 0
 
-    asins = [p.asin for p in products]
-    infos = get_products_info(keepa_api_key, asins)
-    info_by_asin = {i["asin"]: i for i in infos}
-
     alerts_sent = 0
     for product in products:
-        info = info_by_asin.get(product.asin)
-        if not info or info["current_price"] is None:
+        price = fetch_current_price(product.url)
+        if price is None:
             continue
 
         previous_price = product.current_price
-        update_product_price(db_path, product.id, info["current_price"])
+        update_product_price(db_path, product.id, price)
 
         if product.target_price and should_send_alert(
-            info["current_price"], product.target_price,
+            price, product.target_price,
             product.last_alert_at, previous_price,
         ):
             msg = (
                 f"🔔 Prezzo raggiunto!\n"
                 f"*{product.name}*\n"
-                f"💰 Prezzo attuale: €{info['current_price']:.2f}\n"
+                f"💰 Prezzo attuale: €{price:.2f}\n"
                 f"🎯 Il tuo target: €{product.target_price:.2f}\n"
                 f"🔗 [Acquista ora]({product.url})"
             )
@@ -1096,33 +1048,30 @@ async def _cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @_owner_only
 async def _cmd_import(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from scraper import scrape_wishlist_asins
-    from keepa_client import get_products_info
+    from scraper import scrape_wishlist
     from database import get_product_by_asin, add_product
 
     db_path = context.bot_data["db_path"]
-    keepa_key = context.bot_data["keepa_api_key"]
     wishlist_url = context.bot_data["wishlist_url"]
 
     await update.message.reply_text("⏳ Importazione wishlist in corso...")
 
     try:
-        asins = scrape_wishlist_asins(wishlist_url)
+        items = scrape_wishlist(wishlist_url)
     except Exception as e:
         await update.message.reply_text(f"❌ Errore scraping wishlist: {e}")
         return
 
-    new_asins = [a for a in asins if not get_product_by_asin(db_path, a)]
-    if not new_asins:
+    new_items = [i for i in items if not get_product_by_asin(db_path, i["asin"])]
+    if not new_items:
         await update.message.reply_text("Tutti i prodotti della wishlist sono già in tracciamento.")
         return
 
-    infos = get_products_info(keepa_key, new_asins)
-    for info in infos:
-        add_product(db_path, info["asin"], info["name"], info["url"], info["current_price"], "wishlist")
+    for item in new_items:
+        add_product(db_path, item["asin"], item["name"], item["url"], item["price"], "wishlist")
 
-    skipped = len(asins) - len(new_asins)
-    msg = f"✅ Importati {len(infos)} prodotti"
+    skipped = len(items) - len(new_items)
+    msg = f"✅ Importati {len(new_items)} prodotti"
     if skipped:
         msg += f", {skipped} già presenti."
     await update.message.reply_text(msg)
@@ -1130,7 +1079,7 @@ async def _cmd_import(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @_owner_only
 async def _cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from keepa_client import extract_asin_from_url, get_product_info
+    from scraper import fetch_product_info, _extract_asin_from_url
     from database import get_product_by_asin, add_product
 
     if not context.args:
@@ -1138,10 +1087,9 @@ async def _cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     db_path = context.bot_data["db_path"]
-    keepa_key = context.bot_data["keepa_api_key"]
     url = context.args[0]
 
-    asin = extract_asin_from_url(url)
+    asin = _extract_asin_from_url(url)
     if not asin:
         await update.message.reply_text("URL non valido. Deve contenere /dp/ASIN.")
         return
@@ -1151,13 +1099,13 @@ async def _cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text("⏳ Recupero informazioni...")
-    info = get_product_info(keepa_key, asin)
+    info = fetch_product_info(url)
     if not info:
-        await update.message.reply_text("Prodotto non trovato su Keepa.")
+        await update.message.reply_text("Prodotto non trovato.")
         return
 
-    product = add_product(db_path, info["asin"], info["name"], info["url"], info["current_price"], "manual")
-    price_str = f"€{info['current_price']:.2f}" if info["current_price"] else "N/D"
+    product = add_product(db_path, info["asin"], info["name"], info["url"], info["price"], "manual")
+    price_str = f"€{info['price']:.2f}" if info["price"] else "N/D"
     await update.message.reply_text(
         f"✅ Aggiunto: *{info['name']}*\n"
         f"💰 Prezzo attuale: {price_str}\n"
@@ -1322,7 +1270,7 @@ def main() -> None:
             )
 
         async def price_check_job() -> None:
-            count = await run_price_check(config.db_path, config.keepa_api_key, send_message)
+            count = await run_price_check(config.db_path, send_message)
             logger.info("Price check: %d alert inviati", count)
 
         async def weekly_report_job() -> None:
@@ -1348,7 +1296,6 @@ def main() -> None:
         {
             "chat_id": config.telegram_chat_id,
             "db_path": config.db_path,
-            "keepa_api_key": config.keepa_api_key,
             "wishlist_url": config.wishlist_url,
         },
         post_init=post_init,
