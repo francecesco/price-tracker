@@ -1,6 +1,7 @@
 services:
   price-tracker:
     build: .
+    container_name: price-tracker
     restart: unless-stopped
     env_file: .env
     volumes:
