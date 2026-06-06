@@ -35,12 +35,15 @@ from database import add_product, update_product_target
 from scheduler import run_price_check, run_weekly_report
 
 
+_FAKE_INFO = {"asin": "B09XS7JWHH", "name": "Sony", "url": "https://amazon.it/dp/B09XS7JWHH", "price": 200.0}
+
+
 @pytest.mark.asyncio
 async def test_run_price_check_sends_alert_when_below_target(tmp_db):
     p = add_product(tmp_db, "B09XS7JWHH", "Sony", "https://amazon.it/dp/B09XS7JWHH", 250.0, "manual")
     update_product_target(tmp_db, p.id, 220.0)
     send_alert = AsyncMock()
-    with patch("scheduler.fetch_current_price", return_value=200.0):
+    with patch("scheduler.fetch_product_info", return_value=_FAKE_INFO):
         count = await run_price_check(tmp_db, send_alert)
     assert count == 1
     send_alert.assert_called_once()
@@ -54,7 +57,7 @@ async def test_run_price_check_no_alert_above_target(tmp_db):
     p = add_product(tmp_db, "B09XS7JWHH", "Sony", "https://amazon.it/dp/B09XS7JWHH", 250.0, "manual")
     update_product_target(tmp_db, p.id, 180.0)
     send_alert = AsyncMock()
-    with patch("scheduler.fetch_current_price", return_value=200.0):
+    with patch("scheduler.fetch_product_info", return_value=_FAKE_INFO):
         count = await run_price_check(tmp_db, send_alert)
     assert count == 0
     send_alert.assert_not_called()
@@ -64,9 +67,32 @@ async def test_run_price_check_no_alert_above_target(tmp_db):
 async def test_run_price_check_no_alert_without_target(tmp_db):
     add_product(tmp_db, "B09XS7JWHH", "Sony", "https://amazon.it/dp/B09XS7JWHH", 250.0, "manual")
     send_alert = AsyncMock()
-    with patch("scheduler.fetch_current_price", return_value=100.0):
+    with patch("scheduler.fetch_product_info", return_value={**_FAKE_INFO, "price": 100.0}):
         count = await run_price_check(tmp_db, send_alert)
     assert count == 0
+    send_alert.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_price_check_warns_when_product_name_changed(tmp_db):
+    add_product(tmp_db, "B09XS7JWHH", "Sony WH-1000XM5", "https://amazon.it/dp/B09XS7JWHH", 250.0, "manual")
+    send_alert = AsyncMock()
+    changed_info = {"asin": "B09XS7JWHH", "name": "Logitech MX Master Mouse", "url": "https://amazon.it/dp/B09XS7JWHH", "price": 89.0}
+    with patch("scheduler.fetch_product_info", return_value=changed_info):
+        await run_price_check(tmp_db, send_alert)
+    send_alert.assert_called_once()
+    msg = send_alert.call_args[0][0]
+    assert "cambiato" in msg.lower()
+    assert "Sony" in msg
+
+
+@pytest.mark.asyncio
+async def test_run_price_check_no_warning_when_name_similar(tmp_db):
+    add_product(tmp_db, "B09XS7JWHH", "Sony WH-1000XM5 Headphones", "https://amazon.it/dp/B09XS7JWHH", 250.0, "manual")
+    send_alert = AsyncMock()
+    similar_info = {"asin": "B09XS7JWHH", "name": "Sony WH-1000XM5 Wireless Headphones", "url": "https://amazon.it/dp/B09XS7JWHH", "price": 219.0}
+    with patch("scheduler.fetch_product_info", return_value=similar_info):
+        await run_price_check(tmp_db, send_alert)
     send_alert.assert_not_called()
 
 

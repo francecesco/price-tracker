@@ -6,7 +6,17 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from scraper import fetch_current_price
+from scraper import fetch_product_info
+
+
+def _names_match(stored: str, current: str) -> bool:
+    """Ritorna False se i nomi sono troppo diversi (meno del 50% di parole in comune)."""
+    words_stored = set(stored.lower().split())
+    words_current = set(current.lower().split())
+    if not words_stored or not words_current:
+        return True
+    overlap = len(words_stored & words_current) / min(len(words_stored), len(words_current))
+    return overlap >= 0.5
 
 
 
@@ -38,13 +48,24 @@ async def run_price_check(db_path: str, send_alert: Callable) -> int:
 
     alerts_sent = 0
     for product in products:
-        price = fetch_current_price(product.url)
-        if price is None:
+        info = fetch_product_info(product.url)
+        await asyncio.sleep(random.uniform(1.0, 3.0))
+        if info is None or info["price"] is None:
             continue
 
+        # Controllo sicurezza: il prodotto al link è cambiato?
+        if info["name"] != "Prodotto senza nome" and not _names_match(product.name, info["name"]):
+            await send_alert(
+                f"⚠️ *Prodotto cambiato?*\n"
+                f"ID `{product.id}` — il nome non corrisponde più:\n"
+                f"*Era:* {product.name}\n"
+                f"*Ora:* {info['name']}\n"
+                f"[Verifica il link]({product.url})"
+            )
+
+        price = info["price"]
         previous_price = product.current_price
         update_product_price(db_path, product.id, price)
-        await asyncio.sleep(random.uniform(1.0, 3.0))
 
         if product.target_price and should_send_alert(
             price, product.target_price,
