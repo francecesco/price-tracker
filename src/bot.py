@@ -335,6 +335,33 @@ async def _cmd_targetall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 
+@_owner_only
+async def _cmd_testalert(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from database import get_product_by_id
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    db_path = context.bot_data["db_path"]
+    product_id = int(context.args[0]) if context.args else 1
+    p = get_product_by_id(db_path, product_id)
+
+    if not p:
+        await update.message.reply_text(f"Prodotto {product_id} non trovato.")
+        return
+
+    price = p.current_price or 99.99
+    target = p.target_price or price
+    msg = (
+        f"🔔 *[TEST]* Prezzo raggiunto!\n"
+        f"*{p.name}*\n"
+        f"💰 Prezzo attuale: €{price:.2f}\n"
+        f"🎯 Il tuo target: €{target:.2f}"
+    )
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🛒 Acquista ora", url=p.url)
+    ]])
+    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
+
+
 def build_application(token: str, bot_data: dict, post_init=None) -> Application:
     builder = Application.builder().token(token)
     if post_init:
@@ -352,6 +379,7 @@ def build_application(token: str, bot_data: dict, post_init=None) -> Application
     app.add_handler(CommandHandler("status", _cmd_status))
     app.add_handler(CommandHandler("clear", _cmd_clear))
     app.add_handler(CommandHandler("targetall", _cmd_targetall))
+    app.add_handler(CommandHandler("testalert", _cmd_testalert))
     app.add_handler(CommandHandler("sync", _cmd_sync))
     app.add_handler(CommandHandler("debug", _cmd_debug))
 
