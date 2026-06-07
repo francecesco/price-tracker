@@ -1,234 +1,212 @@
-# Amazon Price Tracker
+# 🛒 Amazon Price Tracker
 
-## Descrizione
+Bot Telegram self-hosted che monitora i prezzi della tua wishlist Amazon.it e ti avvisa quando è il momento di comprare.
 
-Bot Telegram self-hosted che monitora i prezzi dei prodotti Amazon.it. Importa l'intera wishlist pubblica tramite browser headless (Playwright), controlla i prezzi ogni 30 minuti e invia un'allerta su Telegram quando un prodotto raggiunge il prezzo target. Ogni venerdì alle 19:00 invia un report settimanale con lo stato di tutti i prodotti.
+Gira come container Docker sulla tua ZimaBoard (o qualsiasi home server con CasaOS) — nessun servizio esterno, nessun costo, dati tuoi.
+
+---
+
+## Come funziona
+
+1. Colleghi la tua wishlist Amazon pubblica
+2. Il bot importa tutti i prodotti usando un browser headless (Playwright)
+3. Ogni 30 minuti controlla i prezzi direttamente su Amazon.it
+4. Quando un prodotto scende sotto il tuo target, ricevi un alert con un pulsante per comprarlo
+
+```
+🔔 Prezzo raggiunto!
+Sony WH-1000XM5
+💰 Prezzo attuale: €219,00
+🎯 Il tuo target: €220,00
+
+[ 🛒 Acquista ora ]
+```
 
 ---
 
 ## Funzionalità
 
-- Importa automaticamente **tutti** i prodotti da una wishlist pubblica Amazon.it (browser headless, nessun limite di pagina)
-- Aggiunta manuale di prodotti tramite URL Amazon
-- Sincronizzazione wishlist: aggiunge i nuovi prodotti, rimuove quelli eliminati dalla lista
-- Controllo prezzi automatico ogni 30 minuti con delay casuale tra le richieste
-- Allerta Telegram quando il prezzo scende sotto il target impostato
-- Anti-spam: una notifica ogni 24h per prodotto se il prezzo rimane invariato, immediata se scende ulteriormente
-- Avviso di sicurezza se il nome di un prodotto cambia allo stesso URL (prodotto sostituito)
-- Report settimanale ogni venerdì alle 19:00
-- Storico prezzi salvato nel database per ogni prodotto
-- Accesso riservato al solo proprietario del bot
-- Gira come singolo container Docker (adatto a CasaOS / ZimaBoard)
+- **Import automatico** della wishlist completa (nessun limite di prodotti)
+- **Sincronizzazione** — aggiunge i nuovi prodotti, rimuove quelli che hai tolto dalla wishlist
+- **Alert con pulsante** diretto alla pagina Amazon quando il prezzo raggiunge il target
+- **Anti-spam** — una notifica ogni 24h se il prezzo rimane invariato, immediata se scende ulteriormente
+- **Safety check** — avvisa se il prodotto a un certo link è cambiato (ASIN riutilizzato)
+- **Report settimanale** ogni venerdì alle 19:00 con lo stato di tutti i prodotti
+- **Storico prezzi** salvato nel database per ogni prodotto
+- Accesso riservato solo a te (il tuo chat ID)
 
 ---
 
 ## Prerequisiti
 
-- Docker e Docker Compose installati sull'host
-- Un bot Telegram (token ottenuto da BotFather)
-- Il proprio Telegram Chat ID
-- L'URL di una wishlist Amazon.it pubblica (opzionale se si aggiungono prodotti solo manualmente)
+- Docker e Docker Compose sull'host
+- Un bot Telegram — crealo su [@BotFather](https://t.me/BotFather)
+- Il tuo Telegram Chat ID — ottienilo da [@userinfobot](https://t.me/userinfobot)
+- Una wishlist Amazon.it impostata come **pubblica**
 
 ---
 
-## Configurazione
+## Setup
 
-### 1. Creare il bot Telegram e ottenere il token
-
-1. Apri Telegram e cerca `@BotFather`
-2. Invia il comando `/newbot`
-3. Scegli un nome e uno username per il bot (lo username deve finire in `bot`, es. `MyPriceTrackerBot`)
-4. BotFather restituirà un token nel formato `123456789:AABBccDDeeFFggHH...` — copialo, è il valore di `TELEGRAM_BOT_TOKEN`
-
-### 2. Ottenere il proprio Chat ID
-
-1. Cerca `@userinfobot` su Telegram e invia `/start`
-2. Il bot risponderà con il tuo `Id` numerico — è il valore di `TELEGRAM_CHAT_ID`
-
-### 3. Ottenere l'URL della wishlist Amazon
-
-1. Vai su Amazon.it e apri la wishlist da monitorare
-2. Assicurati che sia impostata come **pubblica** (Impostazioni wishlist → Privacy → Pubblica)
-3. Copia l'URL dalla barra del browser — ha il formato `https://www.amazon.it/hz/wishlist/ls/XXXXXXXXXXXXXX`
-
-### 4. Variabili d'ambiente
-
-| Variabile | Obbligatoria | Default | Descrizione |
-|---|---|---|---|
-| `TELEGRAM_BOT_TOKEN` | Sì | — | Token del bot fornito da BotFather |
-| `TELEGRAM_CHAT_ID` | Sì | — | Il tuo Telegram user ID numerico |
-| `AMAZON_WISHLIST_URL` | Sì | — | URL della wishlist pubblica Amazon.it |
-| `CHECK_INTERVAL_MINUTES` | No | `30` | Minuti tra un controllo prezzi e il successivo |
-| `REPORT_DAY` | No | `friday` | Giorno della settimana per il report (in inglese) |
-| `REPORT_TIME` | No | `19:00` | Orario del report settimanale (formato HH:MM) |
-| `DB_PATH` | No | `/app/data/tracker.db` | Percorso del database SQLite (interno al container) |
-
----
-
-## Deploy su CasaOS
-
-### 1. Clonare il repository
+### 1. Clona il repository
 
 ```bash
 git clone https://github.com/francecesco/price-tracker.git price-tracker
 cd price-tracker
 ```
 
-### 2. Creare il file `.env`
+### 2. Configura le variabili d'ambiente
 
 ```bash
 cp .env.example .env
+nano .env
 ```
 
-### 3. Compilare il file `.env`
+Compila il file con i tuoi valori:
 
 ```env
 TELEGRAM_BOT_TOKEN=123456789:AABBccDDeeFFggHH...
 TELEGRAM_CHAT_ID=987654321
 AMAZON_WISHLIST_URL=https://www.amazon.it/hz/wishlist/ls/XXXXXXXXXXXXXX
-CHECK_INTERVAL_MINUTES=30
-REPORT_DAY=friday
-REPORT_TIME=19:00
 ```
 
-### 4. Avviare il container
+Le altre variabili sono opzionali — i default vanno bene per iniziare.
+
+| Variabile | Default | Descrizione |
+|---|---|---|
+| `CHECK_INTERVAL_MINUTES` | `30` | Minuti tra un controllo e il successivo |
+| `REPORT_DAY` | `friday` | Giorno del report settimanale (in inglese) |
+| `REPORT_TIME` | `19:00` | Orario del report |
+| `DB_PATH` | `/app/data/tracker.db` | Percorso database (interno al container) |
+
+### 3. Avvia
 
 ```bash
 docker compose up -d
 ```
 
-Il primo avvio scarica l'immagine base e installa Playwright + Chromium (~300MB, richiede qualche minuto). I successivi riavvii sono istantanei.
+La prima build scarica Playwright + Chromium (~300MB) — ci vogliono qualche minuto. I riavvii successivi sono istantanei.
 
-Il container si riavvia automaticamente in caso di crash o reboot (`restart: unless-stopped`).
-
-### 5. Verificare i log
-
-```bash
-docker logs -f price-tracker
-```
-
-### 6. Prima importazione
-
-Una volta avviato, su Telegram:
+### 4. Prima configurazione su Telegram
 
 ```
-/import   ← importa tutta la wishlist
-/list     ← verifica i prodotti importati
-/target 1 199.99   ← imposta il target per il prodotto con ID 1
+/import          → importa la wishlist (~30 secondi)
+/list            → verifica i prodotti importati
+/targetall 20    → imposta il target al -20% per tutti
 ```
-
-### 7. Aggiornamenti futuri
-
-```bash
-docker compose down && git pull && docker compose up -d
-```
-
-> I dati del database persistono nella cartella `./data` sul host e non vengono mai persi tra riavvii o aggiornamenti.
 
 ---
 
-## Guida ai comandi Telegram
+## Aggiornamenti
 
-Tutti i comandi sono accessibili solo dall'utente il cui ID corrisponde a `TELEGRAM_CHAT_ID`.
+```bash
+docker compose down && git pull && docker compose up -d --build
+```
 
-### Gestione wishlist
+> I dati nel volume `./data` non vengono mai toccati dagli aggiornamenti.
 
-| Comando | Descrizione |
-|---|---|
-| `/import` | Importa tutti i prodotti dalla wishlist Amazon (usa Playwright, ~30 secondi) |
-| `/sync` | Sincronizza la wishlist: aggiunge i nuovi prodotti, rimuove quelli eliminati dalla lista. I prodotti aggiunti manualmente con `/add` vengono mantenuti. |
+---
 
-### Gestione prodotti
+## Comandi Telegram
 
-| Comando | Esempio | Descrizione |
-|---|---|---|
-| `/add <url>` | `/add https://www.amazon.it/dp/B09XS7JWHH` | Aggiunge un prodotto manualmente tramite URL Amazon |
-| `/list` | `/list` | Mostra tutti i prodotti con ID, prezzo attuale e target |
-| `/target <id> <prezzo>` | `/target 3 199.99` oppure `/target 3 199,99` | Imposta o aggiorna il prezzo target (accetta sia `.` che `,` come separatore decimale) |
-| `/targetall <sconto%>` | `/targetall 20` | Imposta il target di **tutti** i prodotti al prezzo attuale meno la percentuale indicata (es. 20% → target = prezzo × 0.80) |
-| `/remove <id>` | `/remove 3` | Rimuove definitivamente un prodotto dal tracciamento |
-
-### Controllo e stato
+### Wishlist
 
 | Comando | Descrizione |
 |---|---|
-| `/check` | Forza un controllo immediato dei prezzi senza aspettare il prossimo ciclo automatico |
-| `/status` | Mostra la data/ora del prossimo check automatico e del prossimo report settimanale |
+| `/import` | Importa tutti i prodotti dalla wishlist (usa Playwright, ~30 sec) |
+| `/sync` | Aggiunge i nuovi prodotti dalla wishlist, rimuove quelli eliminati. I prodotti aggiunti con `/add` vengono mantenuti. |
 
-### Manutenzione
+### Prodotti
 
 | Comando | Descrizione |
 |---|---|
-| `/clear` | Mostra un avviso con il numero di prodotti e chiede conferma |
-| `/clear conferma` | Svuota completamente il database (prodotti + storico prezzi) |
-| `/debug` | Avvia Playwright e conta quanti prodotti trova nella wishlist — utile per diagnosticare problemi di scraping |
+| `/add <url>` | Aggiunge un prodotto manualmente tramite URL Amazon |
+| `/list` | Mostra tutti i prodotti con ID, prezzo attuale e target |
+| `/target <id> <prezzo>` | Imposta il target per un prodotto — es. `/target 3 199.99` o `/target 3 199,99` |
+| `/targetall <sconto%>` | Imposta il target per **tutti** i prodotti al prezzo attuale meno X% — es. `/targetall 20` |
+| `/remove <id>` | Rimuove un prodotto dal tracciamento |
 
-### Notifiche automatiche
+### Controllo
 
-Il bot invia messaggi automatici senza che tu faccia nulla:
+| Comando | Descrizione |
+|---|---|
+| `/check` | Forza un controllo prezzi immediato |
+| `/status` | Prossimo check automatico e prossimo report |
 
-- **Alert prezzo** — quando il prezzo di un prodotto scende sotto il target:
-  ```
-  🔔 Prezzo raggiunto!
-  Sony WH-1000XM5
-  💰 Prezzo attuale: €219,00
-  🎯 Il tuo target: €220,00
-  🔗 Acquista ora
-  ```
+### Utilità
 
-- **Avviso prodotto cambiato** — se il nome del prodotto a un certo URL cambia significativamente (prodotto sostituito):
-  ```
-  ⚠️ Prodotto cambiato?
-  ID 3 — il nome non corrisponde più:
-  Era: Sony WH-1000XM5
-  Ora: Logitech MX Master Mouse
-  ```
+| Comando | Descrizione |
+|---|---|
+| `/clear` | Mostra quanti prodotti ci sono e chiede conferma |
+| `/clear conferma` | Svuota completamente il database |
+| `/testalert` | Simula un alert di prezzo raggiunto per il prodotto 1 — utile per testare il pulsante. Puoi specificare un ID: `/testalert 5` |
+| `/debug` | Avvia Playwright e conta quanti prodotti trova nella wishlist |
 
-- **Report settimanale** — ogni venerdì alle 19:00 (o nel giorno/orario configurato):
-  ```
-  📊 Report settimanale prezzi
-  ─────────────────────────
-  ✅ Sony WH-1000XM5     €219 / target €220
-  ❌ iPad Air 11"        €749 / target €600
-  ```
+---
+
+## Notifiche automatiche
+
+Il bot invia messaggi senza che tu faccia nulla.
+
+**Alert prezzo raggiunto** — con pulsante diretto ad Amazon:
+```
+🔔 Prezzo raggiunto!
+Sony WH-1000XM5
+💰 Prezzo attuale: €219,00
+🎯 Il tuo target: €220,00
+
+[ 🛒 Acquista ora ]
+```
+
+**Avviso prodotto cambiato** — se il nome del prodotto cambia significativamente allo stesso URL:
+```
+⚠️ Prodotto cambiato?
+ID 3 — il nome non corrisponde più:
+Era: Sony WH-1000XM5
+Ora: Logitech MX Master Mouse
+```
+
+**Report settimanale** — ogni venerdì alle 19:00:
+```
+📊 Report settimanale prezzi
+─────────────────────────
+✅ Sony WH-1000XM5     €219 / target €220
+❌ iPad Air 11"        €749 / target €600
+❌ Kindle Paperwhite   €159 / target €120
+```
 
 ---
 
 ## Sviluppo locale
 
 ```bash
-python -m venv venv
-source venv/bin/activate
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 playwright install chromium
 
-cp .env.example .env
-# Compilare .env con i valori reali
-
-pytest          # esegue i test
-python src/main.py   # avvia il bot
+cp .env.example .env   # compila con i valori reali
+pytest                 # esegui i test
+python src/main.py     # avvia il bot
 ```
 
 ---
 
 ## Architettura
 
-| File | Responsabilità |
+| Modulo | Responsabilità |
 |---|---|
-| `config.py` | Carica e valida le variabili d'ambiente |
-| `database.py` | SQLite: CRUD su `products` e `price_history` |
-| `scraper.py` | Playwright per la wishlist, requests per i singoli prodotti |
+| `config.py` | Legge e valida le variabili d'ambiente |
+| `database.py` | SQLite: prodotti e storico prezzi |
+| `scraper.py` | Playwright per la wishlist, requests per i prezzi dei singoli prodotti |
 | `scheduler.py` | APScheduler: check prezzi ogni N minuti, report settimanale |
-| `bot.py` | Handler comandi Telegram, `build_application` |
-| `main.py` | Entry point: wiring config + DB + bot + scheduler |
-
-Il database SQLite è in `/app/data/tracker.db` nel container, mappato su `./data/tracker.db` sull'host.
+| `bot.py` | Handler comandi Telegram |
+| `main.py` | Entry point: collega tutti i moduli e avvia il polling |
 
 ---
 
 ## Note
 
-- **Wishlist pubblica**: deve essere impostata come pubblica su Amazon, altrimenti lo scraping non trova prodotti.
-- **Prodotti non disponibili**: Amazon nasconde dalle wishlist pubbliche i prodotti non più disponibili — è normale non trovarli.
-- **Stabilità dello scraping**: i prezzi dei singoli prodotti vengono estratti da richieste HTTP dirette senza JavaScript. Se Amazon cambia la struttura HTML, alcuni prezzi potrebbero risultare `N/D` — aggiornare i selettori in `src/scraper.py`.
-- **Dimensione immagine Docker**: il container include Chromium (~300MB). La prima build richiede qualche minuto di download.
+- **Wishlist pubblica** — deve essere impostata come pubblica su Amazon, altrimenti lo scraping non trova prodotti.
+- **Prodotti non disponibili** — Amazon nasconde dalle wishlist pubbliche i prodotti fuori produzione. È normale non trovarli.
+- **Prezzi N/D** — i prezzi dei singoli prodotti vengono estratti con HTTP diretto. Se Amazon cambia la struttura HTML, alcuni prezzi potrebbero non essere rilevati. In quel caso aggiorna i selettori in `src/scraper.py`.
+- **Dimensione immagine** — il container include Chromium (~300MB). La prima build richiede qualche minuto.
