@@ -284,18 +284,25 @@ async def _cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     wishlist_url = context.bot_data["wishlist_url"]
     base_url = wishlist_url.split("?")[0]
-    lines = [f"🔍 *Debug wishlist*\nURL base: `{base_url}`\n"]
+    lines = [f"🔍 *Debug wishlist*\nBase: `{base_url}`\n"]
 
-    for page in range(1, 4):
+    session = requests.Session()
+    prev_asins: set = set()
+
+    for page in range(1, 5):
         page_url = wishlist_url if page == 1 else f"{base_url}?page={page}"
         try:
-            r = requests.get(page_url, headers=_HEADERS, timeout=15)
+            r = session.get(page_url, headers=_HEADERS, timeout=15)
             soup = BeautifulSoup(r.text, "html.parser")
             items = _extract_items_from_wishlist_page(soup)
-            sample = ", ".join(i["asin"] for i in items[:3])
-            lines.append(f"*Pagina {page}*: {len(items)} prodotti → {sample or 'nessuno'}")
+            asins = {i["asin"] for i in items}
+            new = asins - prev_asins
+            sample = ", ".join(list(asins)[:3])
+            overlap = "♻️ stessa pagina" if asins and asins == prev_asins else f"{len(new)} nuovi"
+            lines.append(f"*P{page}*: {len(items)} item ({overlap}) → {sample or 'vuota'}")
+            prev_asins = asins
         except Exception as e:
-            lines.append(f"*Pagina {page}*: errore — {e}")
+            lines.append(f"*P{page}*: errore — {e}")
             break
 
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)

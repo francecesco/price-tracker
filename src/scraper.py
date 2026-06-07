@@ -26,35 +26,42 @@ _PRICE_SELECTORS = [
 def scrape_wishlist(wishlist_url: str) -> list:
     """Scarica la wishlist pubblica e ritorna lista di {asin, name, url, price}.
 
-    Usa paginazione esplicita (?page=N) invece di cercare il link "Successiva"
-    nell'HTML, più affidabile su Amazon.
+    Usa una Session per mantenere i cookie tra le pagine (necessario per Amazon)
+    e paginazione esplicita ?page=N.
     """
     logger = logging.getLogger(__name__)
     base_url = wishlist_url.split("?")[0]
     items: list = []
     seen: set = set()
 
+    session = requests.Session()
+
     for page in range(1, 21):  # max 20 pagine = 200 prodotti
         page_url = wishlist_url if page == 1 else f"{base_url}?page={page}"
         try:
-            response = requests.get(page_url, headers=_HEADERS, timeout=15)
+            response = session.get(page_url, headers=_HEADERS, timeout=15)
             response.raise_for_status()
         except requests.RequestException as e:
-            logger.warning("Errore scraping wishlist pagina %d: %s", page, e)
+            logger.warning("Errore wishlist pagina %d: %s", page, e)
             break
 
         soup = BeautifulSoup(response.text, "html.parser")
         page_items = _extract_items_from_wishlist_page(soup)
-        new_items = [i for i in page_items if i["asin"] not in seen]
+        logger.info("Wishlist pagina %d: %d prodotti nell'HTML", page, len(page_items))
 
+        if not page_items:
+            # Pagina vuota → fine lista
+            break
+
+        new_items = [i for i in page_items if i["asin"] not in seen]
         if not new_items:
-            break  # pagina vuota o senza nuovi ASIN: fine wishlist
+            # Tutti già visti → Amazon sta ripetendo la stessa pagina, inutile continuare
+            logger.info("Pagina %d: tutti i prodotti già visti, stop paginazione", page)
+            break
 
         for item in new_items:
             seen.add(item["asin"])
             items.append(item)
-
-        logger.info("Wishlist pagina %d: %d prodotti trovati", page, len(new_items))
 
     return items
 
