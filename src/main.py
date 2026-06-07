@@ -20,9 +20,11 @@ def main() -> None:
     logger.info("Database inizializzato: %s", config.db_path)
 
     async def post_init(app: Application) -> None:
-        async def send_message(msg: str) -> None:
+        async def send_message(msg: str, reply_markup=None) -> None:
             await app.bot.send_message(
-                config.telegram_chat_id, msg, parse_mode="Markdown"
+                config.telegram_chat_id, msg,
+                parse_mode="Markdown",
+                reply_markup=reply_markup,
             )
 
         async def price_check_job() -> None:

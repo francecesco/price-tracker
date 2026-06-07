@@ -71,14 +71,17 @@ async def run_price_check(db_path: str, send_alert: Callable) -> int:
             price, product.target_price,
             product.last_alert_at, previous_price,
         ):
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
             msg = (
                 f"🔔 Prezzo raggiunto!\n"
                 f"*{product.name}*\n"
                 f"💰 Prezzo attuale: €{price:.2f}\n"
-                f"🎯 Il tuo target: €{product.target_price:.2f}\n"
-                f"🔗 [Acquista ora]({product.url})"
+                f"🎯 Il tuo target: €{product.target_price:.2f}"
             )
-            await send_alert(msg)
+            keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton("🛒 Acquista ora", url=product.url)
+            ]])
+            await send_alert(msg, reply_markup=keyboard)
             update_last_alert(db_path, product.id)
             alerts_sent += 1
 
