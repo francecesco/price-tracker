@@ -76,20 +76,61 @@ def fetch_current_price(product_url: str) -> Optional[float]:
 
 def _extract_items_from_wishlist_page(soup: BeautifulSoup) -> list:
     items = []
-    for item_el in soup.find_all("li", attrs={"data-id": True}):
+    seen: set = set()
+
+    # Strategia 1: li con data-id o id che inizia con "item"
+    containers = (
+        soup.find_all("li", attrs={"data-id": True})
+        or soup.find_all("li", id=re.compile(r"^item"))
+    )
+    for item_el in containers:
         asin_el = item_el.find(attrs={"data-asin": re.compile(r"^[A-Z0-9]{10}$")})
-        if not asin_el:
+        asin = asin_el.get("data-asin") if asin_el else None
+        if not asin:
+            link = item_el.find("a", href=re.compile(r"/dp/[A-Z0-9]{10}"))
+            if link:
+                m = re.search(r"/dp/([A-Z0-9]{10})", link["href"])
+                asin = m.group(1) if m else None
+        if not asin or asin in seen:
             continue
-        asin = asin_el.get("data-asin")
-        name_el = item_el.find("a", {"id": re.compile(r"itemName")})
-        name = name_el.get_text(strip=True) if name_el else "Prodotto senza nome"
+        seen.add(asin)
+
+        name_el = item_el.find("a", id=re.compile(r"itemName")) or item_el.find(
+            "a", href=re.compile(r"/dp/" + asin)
+        )
+        name = (name_el.get_text(strip=True) or name_el.get("title", "")) if name_el else ""
+        name = name or "Prodotto senza nome"
+
         price = None
         price_el = item_el.find(class_="a-price")
         if price_el:
             offscreen = price_el.find(class_="a-offscreen")
             if offscreen:
                 price = _parse_price_text(offscreen.get_text(strip=True))
+        if price is None:
+            dp = item_el.get("data-price")
+            if dp and dp != "-Infinity":
+                try:
+                    price = float(dp) / 100
+                except (ValueError, TypeError):
+                    pass
+
         items.append({"asin": asin, "name": name, "url": f"https://www.amazon.it/dp/{asin}", "price": price})
+
+    # Strategia 2 (fallback): estrae ASIN da tutti i link /dp/ della pagina
+    if not items:
+        logging.getLogger(__name__).warning("Strategia strutturata vuota, uso fallback sui link prodotto")
+        for link in soup.find_all("a", href=re.compile(r"/dp/[A-Z0-9]{10}")):
+            m = re.search(r"/dp/([A-Z0-9]{10})", link["href"])
+            if not m:
+                continue
+            asin = m.group(1)
+            if asin in seen:
+                continue
+            seen.add(asin)
+            name = link.get_text(strip=True) or link.get("title", "Prodotto senza nome") or "Prodotto senza nome"
+            items.append({"asin": asin, "name": name, "url": f"https://www.amazon.it/dp/{asin}", "price": None})
+
     return items
 
 

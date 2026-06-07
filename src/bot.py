@@ -68,9 +68,17 @@ async def _cmd_import(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Errore scraping wishlist: {e}")
         return
 
+    if not items:
+        await update.message.reply_text(
+            "❌ Nessun prodotto trovato nella wishlist.\n"
+            "Verifica che sia impostata come *pubblica* e che l'URL nel `.env` sia corretto.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
     new_items = [i for i in items if not get_product_by_asin(db_path, i["asin"])]
     if not new_items:
-        await update.message.reply_text("Tutti i prodotti della wishlist sono già in tracciamento.")
+        await update.message.reply_text(f"Tutti i {len(items)} prodotti della wishlist sono già in tracciamento.")
         return
 
     for item in new_items:
