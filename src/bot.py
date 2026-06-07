@@ -280,31 +280,31 @@ async def _cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
     import requests
     from bs4 import BeautifulSoup
-    from scraper import _extract_items_from_wishlist_page, _HEADERS
+    from scraper import _extract_items_from_wishlist_page, _HEADERS, _SORT_ORDERS
 
     wishlist_url = context.bot_data["wishlist_url"]
     base_url = wishlist_url.split("?")[0]
-    lines = [f"🔍 *Debug wishlist*\nBase: `{base_url}`\n"]
+    lines = [f"🔍 *Debug wishlist* ({base_url.split('/')[-1]})\n"]
 
     session = requests.Session()
-    prev_asins: set = set()
+    seen: set = set()
+    total = 0
 
-    for page in range(1, 5):
-        page_url = wishlist_url if page == 1 else f"{base_url}?page={page}"
+    for sort in _SORT_ORDERS:
+        url = f"{base_url}?sort={sort}"
         try:
-            r = session.get(page_url, headers=_HEADERS, timeout=15)
+            r = session.get(url, headers=_HEADERS, timeout=15)
             soup = BeautifulSoup(r.text, "html.parser")
-            items = _extract_items_from_wishlist_page(soup)
-            asins = {i["asin"] for i in items}
-            new = asins - prev_asins
-            sample = ", ".join(list(asins)[:3])
-            overlap = "♻️ stessa pagina" if asins and asins == prev_asins else f"{len(new)} nuovi"
-            lines.append(f"*P{page}*: {len(items)} item ({overlap}) → {sample or 'vuota'}")
-            prev_asins = asins
+            page_items = _extract_items_from_wishlist_page(soup)
+            new = [i for i in page_items if i["asin"] not in seen]
+            for i in new:
+                seen.add(i["asin"])
+            total += len(new)
+            lines.append(f"`{sort}`: {len(page_items)} item, {len(new)} nuovi")
         except Exception as e:
-            lines.append(f"*P{page}*: errore — {e}")
-            break
+            lines.append(f"`{sort}`: errore — {e}")
 
+    lines.append(f"\n📦 *Totale unici trovati: {total}*")
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 

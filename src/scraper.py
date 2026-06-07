@@ -23,41 +23,45 @@ _PRICE_SELECTORS = [
 ]
 
 
+# Amazon carica i prodotti oltre i primi 10 via JavaScript (lazy loading).
+# La paginazione ?page=N non funziona senza un browser headless.
+# Workaround: scraping con ordinamenti diversi — ogni sort espone una top-10 diversa.
+_SORT_ORDERS = [
+    "default",
+    "date-added-desc",
+    "price-asc",
+    "price-desc",
+    "updated-desc",
+    "priority-desc",
+]
+
+
 def scrape_wishlist(wishlist_url: str) -> list:
     """Scarica la wishlist pubblica e ritorna lista di {asin, name, url, price}.
 
-    Usa una Session per mantenere i cookie tra le pagine (necessario per Amazon)
-    e paginazione esplicita ?page=N.
+    Usa più ordinamenti per aggirare il limite di 10 prodotti per pagina
+    imposto da Amazon senza JavaScript.
     """
     logger = logging.getLogger(__name__)
     base_url = wishlist_url.split("?")[0]
-    items: list = []
     seen: set = set()
+    items: list = []
 
     session = requests.Session()
 
-    for page in range(1, 21):  # max 20 pagine = 200 prodotti
-        page_url = wishlist_url if page == 1 else f"{base_url}?page={page}"
+    for sort in _SORT_ORDERS:
+        url = f"{base_url}?sort={sort}"
         try:
-            response = session.get(page_url, headers=_HEADERS, timeout=15)
+            response = session.get(url, headers=_HEADERS, timeout=15)
             response.raise_for_status()
         except requests.RequestException as e:
-            logger.warning("Errore wishlist pagina %d: %s", page, e)
-            break
+            logger.warning("Errore wishlist sort=%s: %s", sort, e)
+            continue
 
         soup = BeautifulSoup(response.text, "html.parser")
         page_items = _extract_items_from_wishlist_page(soup)
-        logger.info("Wishlist pagina %d: %d prodotti nell'HTML", page, len(page_items))
-
-        if not page_items:
-            # Pagina vuota → fine lista
-            break
-
         new_items = [i for i in page_items if i["asin"] not in seen]
-        if not new_items:
-            # Tutti già visti → Amazon sta ripetendo la stessa pagina, inutile continuare
-            logger.info("Pagina %d: tutti i prodotti già visti, stop paginazione", page)
-            break
+        logger.info("Sort %-18s: %d prodotti, %d nuovi", sort, len(page_items), len(new_items))
 
         for item in new_items:
             seen.add(item["asin"])
