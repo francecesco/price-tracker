@@ -31,6 +31,8 @@ _SORT_ORDERS = [
     "date-added-desc",
     "price-asc",
     "price-desc",
+    "name-asc",
+    "name-desc",
     "updated-desc",
     "priority-desc",
 ]
