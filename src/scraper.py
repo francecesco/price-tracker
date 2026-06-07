@@ -23,52 +23,58 @@ _PRICE_SELECTORS = [
 ]
 
 
-# Amazon carica i prodotti oltre i primi 10 via JavaScript (lazy loading).
-# La paginazione ?page=N non funziona senza un browser headless.
-# Workaround: scraping con ordinamenti diversi — ogni sort espone una top-10 diversa.
-_SORT_ORDERS = [
-    "default",
-    "date-added-desc",
-    "price-asc",
-    "price-desc",
-    "name-asc",
-    "name-desc",
-    "updated-desc",
-    "priority-desc",
-]
+async def scrape_wishlist(wishlist_url: str) -> list:
+    """Scarica la wishlist pubblica usando Playwright per eseguire JavaScript.
 
-
-def scrape_wishlist(wishlist_url: str) -> list:
-    """Scarica la wishlist pubblica e ritorna lista di {asin, name, url, price}.
-
-    Usa più ordinamenti per aggirare il limite di 10 prodotti per pagina
-    imposto da Amazon senza JavaScript.
+    Scrolla la pagina finché non compaiono nuovi prodotti, poi estrae tutto.
     """
+    from playwright.async_api import async_playwright
+
     logger = logging.getLogger(__name__)
-    base_url = wishlist_url.split("?")[0]
     seen: set = set()
     items: list = []
 
-    session = requests.Session()
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+        )
+        page = await browser.new_page(user_agent=_HEADERS["User-Agent"])
+        await page.set_extra_http_headers({"Accept-Language": _HEADERS["Accept-Language"]})
 
-    for sort in _SORT_ORDERS:
-        url = f"{base_url}?sort={sort}"
         try:
-            response = session.get(url, headers=_HEADERS, timeout=15)
-            response.raise_for_status()
-        except requests.RequestException as e:
-            logger.warning("Errore wishlist sort=%s: %s", sort, e)
-            continue
+            await page.goto(wishlist_url, wait_until="networkidle", timeout=30000)
 
-        soup = BeautifulSoup(response.text, "html.parser")
-        page_items = _extract_items_from_wishlist_page(soup)
-        new_items = [i for i in page_items if i["asin"] not in seen]
-        logger.info("Sort %-18s: %d prodotti, %d nuovi", sort, len(page_items), len(new_items))
+            # Accetta cookie GDPR se presente
+            try:
+                await page.click("#sp-cc-accept", timeout=3000)
+                await page.wait_for_timeout(1000)
+            except Exception:
+                pass
 
-        for item in new_items:
+            # Scrolla finché il numero di prodotti non si stabilizza
+            prev_count = 0
+            for attempt in range(20):
+                count = await page.locator("[data-asin]").count()
+                logger.info("Scroll %d: %d elementi trovati", attempt + 1, count)
+                if count > 0 and count == prev_count:
+                    break
+                prev_count = count
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await page.wait_for_timeout(1500)
+
+            html = await page.content()
+        finally:
+            await browser.close()
+
+    soup = BeautifulSoup(html, "html.parser")
+    page_items = _extract_items_from_wishlist_page(soup)
+    for item in page_items:
+        if item["asin"] not in seen:
             seen.add(item["asin"])
             items.append(item)
 
+    logger.info("Playwright: trovati %d prodotti unici", len(items))
     return items
 
 

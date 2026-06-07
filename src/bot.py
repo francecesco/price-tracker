@@ -65,7 +65,7 @@ async def _cmd_import(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ Importazione wishlist in corso...")
 
     try:
-        items = scrape_wishlist(wishlist_url)
+        items = await scrape_wishlist(wishlist_url)
     except Exception as e:
         await update.message.reply_text(f"❌ Errore scraping wishlist: {e}")
         return
@@ -239,7 +239,7 @@ async def _cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ Sincronizzazione wishlist in corso...")
 
     try:
-        items = scrape_wishlist(wishlist_url)
+        items = await scrape_wishlist(wishlist_url)
     except Exception as e:
         await update.message.reply_text(f"❌ Errore scraping wishlist: {e}")
         return
@@ -278,34 +278,22 @@ async def _cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @_owner_only
 async def _cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    import requests
-    from bs4 import BeautifulSoup
-    from scraper import _extract_items_from_wishlist_page, _HEADERS, _SORT_ORDERS
+    from scraper import scrape_wishlist
 
     wishlist_url = context.bot_data["wishlist_url"]
-    base_url = wishlist_url.split("?")[0]
-    lines = [f"🔍 *Debug wishlist* ({base_url.split('/')[-1]})\n"]
+    await update.message.reply_text("⏳ Avvio browser headless, attendi ~30 secondi...")
 
-    session = requests.Session()
-    seen: set = set()
-    total = 0
-
-    for sort in _SORT_ORDERS:
-        url = f"{base_url}?sort={sort}"
-        try:
-            r = session.get(url, headers=_HEADERS, timeout=15)
-            soup = BeautifulSoup(r.text, "html.parser")
-            page_items = _extract_items_from_wishlist_page(soup)
-            new = [i for i in page_items if i["asin"] not in seen]
-            for i in new:
-                seen.add(i["asin"])
-            total += len(new)
-            lines.append(f"`{sort}`: {len(page_items)} item, {len(new)} nuovi")
-        except Exception as e:
-            lines.append(f"`{sort}`: errore — {e}")
-
-    lines.append(f"\n📦 *Totale unici trovati: {total}*")
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+    try:
+        items = await scrape_wishlist(wishlist_url)
+        sample = ", ".join(i["asin"] for i in items[:5])
+        await update.message.reply_text(
+            f"🔍 *Debug Playwright*\n"
+            f"📦 Prodotti trovati: *{len(items)}*\n"
+            f"Esempi: `{sample}`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Errore: {e}")
 
 
 def build_application(token: str, bot_data: dict, post_init=None) -> Application:
