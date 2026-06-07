@@ -54,14 +54,20 @@ async def scrape_wishlist(wishlist_url: str) -> list:
 
             # Scrolla finché il numero di prodotti non si stabilizza
             prev_count = 0
-            for attempt in range(20):
+            stable_rounds = 0
+            for attempt in range(30):
                 count = await page.locator("[data-asin]").count()
                 logger.info("Scroll %d: %d elementi trovati", attempt + 1, count)
                 if count > 0 and count == prev_count:
-                    break
+                    stable_rounds += 1
+                    if stable_rounds >= 3:
+                        # Count stabile per 3 scroll consecutivi: siamo alla fine
+                        break
+                else:
+                    stable_rounds = 0
                 prev_count = count
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await page.wait_for_timeout(1500)
+                await page.wait_for_timeout(2000)
 
             html = await page.content()
         finally:
