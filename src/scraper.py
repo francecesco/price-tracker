@@ -24,26 +24,39 @@ _PRICE_SELECTORS = [
 
 
 def scrape_wishlist(wishlist_url: str) -> list:
-    """Scarica la wishlist pubblica e ritorna lista di {asin, name, url, price}."""
-    items = []
-    url = wishlist_url
-    while url:
+    """Scarica la wishlist pubblica e ritorna lista di {asin, name, url, price}.
+
+    Usa paginazione esplicita (?page=N) invece di cercare il link "Successiva"
+    nell'HTML, più affidabile su Amazon.
+    """
+    logger = logging.getLogger(__name__)
+    base_url = wishlist_url.split("?")[0]
+    items: list = []
+    seen: set = set()
+
+    for page in range(1, 21):  # max 20 pagine = 200 prodotti
+        page_url = wishlist_url if page == 1 else f"{base_url}?page={page}"
         try:
-            response = requests.get(url, headers=_HEADERS, timeout=15)
+            response = requests.get(page_url, headers=_HEADERS, timeout=15)
             response.raise_for_status()
         except requests.RequestException as e:
-            logging.getLogger(__name__).warning("Errore scraping wishlist %s: %s", url, e)
+            logger.warning("Errore scraping wishlist pagina %d: %s", page, e)
             break
+
         soup = BeautifulSoup(response.text, "html.parser")
-        items.extend(_extract_items_from_wishlist_page(soup))
-        url = _get_next_page_url(soup, wishlist_url)
-    seen = set()
-    unique = []
-    for item in items:
-        if item["asin"] not in seen:
+        page_items = _extract_items_from_wishlist_page(soup)
+        new_items = [i for i in page_items if i["asin"] not in seen]
+
+        if not new_items:
+            break  # pagina vuota o senza nuovi ASIN: fine wishlist
+
+        for item in new_items:
             seen.add(item["asin"])
-            unique.append(item)
-    return unique
+            items.append(item)
+
+        logger.info("Wishlist pagina %d: %d prodotti trovati", page, len(new_items))
+
+    return items
 
 
 def fetch_product_info(product_url: str) -> Optional[dict]:
