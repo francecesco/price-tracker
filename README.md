@@ -48,6 +48,10 @@ Sony WH-1000XM5
 
 ## Setup
 
+Il bot gira su qualsiasi macchina con Docker — ZimaBoard, Mac mini, Proxmox, VPS, Linux generico. I passi sono identici su tutti i sistemi, cambia solo come lanci il terminale.
+
+> **Installazioni multiple:** ogni installazione è indipendente. Clona il repo in cartelle diverse (es. `~/price-tracker-casa` e `~/price-tracker-lavoro`), ognuna con il suo `.env` e il suo `./data`. Puoi usare lo stesso bot Telegram o bot diversi.
+
 ### 1. Clona il repository
 
 ```bash
@@ -59,10 +63,10 @@ cd price-tracker
 
 ```bash
 cp .env.example .env
-nano .env
+nano .env          # oppure: vim .env  /  open .env (Mac)
 ```
 
-Compila il file con i tuoi valori:
+Compila con i tuoi valori:
 
 ```env
 TELEGRAM_BOT_TOKEN=123456789:AABBccDDeeFFggHH...
@@ -70,7 +74,7 @@ TELEGRAM_CHAT_ID=987654321
 AMAZON_WISHLIST_URL=https://www.amazon.it/hz/wishlist/ls/XXXXXXXXXXXXXX
 ```
 
-Le altre variabili sono opzionali — i default vanno bene per iniziare.
+Variabili opzionali (i default vanno bene per iniziare):
 
 | Variabile | Default | Descrizione |
 |---|---|---|
@@ -87,6 +91,17 @@ docker compose up -d
 
 La prima build scarica Playwright + Chromium (~300MB) — ci vogliono qualche minuto. I riavvii successivi sono istantanei.
 
+```bash
+docker logs -f price-tracker   # verifica che sia partito
+```
+
+Dovresti vedere:
+```
+Database inizializzato: /app/data/tracker.db
+Scheduler avviato: check ogni 30min, report friday alle 19:00
+Bot avviato. In ascolto...
+```
+
 ### 4. Prima configurazione su Telegram
 
 ```
@@ -94,6 +109,22 @@ La prima build scarica Playwright + Chromium (~300MB) — ci vogliono qualche mi
 /list            → verifica i prodotti importati
 /targetall 20    → imposta il target al -20% per tutti
 ```
+
+---
+
+## Note per piattaforme specifiche
+
+**CasaOS (ZimaBoard o simili)**
+Puoi deployare via terminale come sopra, oppure usare l'interfaccia "Custom App" di CasaOS: incolla il contenuto di `docker-compose.yml` nell'editor e imposta le variabili d'ambiente dalla UI.
+
+**Mac (Mac mini, MacBook)**
+Docker Desktop deve essere in esecuzione. Tutto il resto è identico. I dati vengono salvati in `./data` nella cartella del progetto.
+
+**Proxmox**
+Crea un container LXC con Debian/Ubuntu, installa Docker, poi segui i passi normali. In alternativa, usa una VM con Docker.
+
+**VPS / server remoto**
+Funziona su qualsiasi distribuzione Linux con Docker installato. Per farlo girare in background anche dopo il logout usa `docker compose up -d` (già incluso nei passi).
 
 ---
 
