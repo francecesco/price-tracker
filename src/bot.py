@@ -23,11 +23,13 @@ async def _cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👋 *Amazon Price Tracker*\n\n"
         "Comandi disponibili:\n"
         "/import — importa dalla wishlist Amazon\n"
-        "/add <url> — aggiungi prodotto\n"
+        "/sync — sincronizza wishlist (aggiunge nuovi, rimuove rimossi)\n"
+        "/add <url> — aggiungi prodotto manualmente\n"
         "/list — mostra tutti i prodotti\n"
         "/remove <id> — rimuovi prodotto\n"
         "/target <id> <prezzo> — imposta target\n"
         "/check — controlla prezzi ora\n"
+        "/clear conferma — svuota il database\n"
         "/status — stato del bot"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
@@ -204,6 +206,76 @@ async def _cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@_owner_only
+async def _cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import sqlite3
+    from database import get_all_products
+
+    db_path = context.bot_data["db_path"]
+
+    if not context.args or context.args[0] != "conferma":
+        count = len(get_all_products(db_path))
+        await update.message.reply_text(
+            f"⚠️ Stai per eliminare *{count} prodotti* e tutto lo storico prezzi.\n"
+            f"Invia /clear conferma per procedere.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DELETE FROM price_history")
+        conn.execute("DELETE FROM products")
+    await update.message.reply_text("✅ Database svuotato.")
+
+
+@_owner_only
+async def _cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from scraper import scrape_wishlist
+    from database import get_all_products, get_product_by_asin, add_product, remove_product
+
+    db_path = context.bot_data["db_path"]
+    wishlist_url = context.bot_data["wishlist_url"]
+
+    await update.message.reply_text("⏳ Sincronizzazione wishlist in corso...")
+
+    try:
+        items = scrape_wishlist(wishlist_url)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Errore scraping wishlist: {e}")
+        return
+
+    if not items:
+        await update.message.reply_text(
+            "❌ Nessun prodotto trovato nella wishlist.\n"
+            "Verifica che sia impostata come *pubblica*.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    wishlist_asins = {i["asin"] for i in items}
+    current_products = get_all_products(db_path)
+
+    added = 0
+    for item in items:
+        if not get_product_by_asin(db_path, item["asin"]):
+            add_product(db_path, item["asin"], item["name"], item["url"], item["price"], "wishlist")
+            added += 1
+
+    removed = 0
+    for p in current_products:
+        if p.source == "wishlist" and p.asin not in wishlist_asins:
+            remove_product(db_path, p.id)
+            removed += 1
+
+    total = len(get_all_products(db_path))
+    await update.message.reply_text(
+        f"✅ Sincronizzazione completata\n"
+        f"➕ Aggiunti: {added}\n"
+        f"➖ Rimossi dalla wishlist: {removed}\n"
+        f"📦 Totale in tracciamento: {total}"
+    )
+
+
 def build_application(token: str, bot_data: dict, post_init=None) -> Application:
     builder = Application.builder().token(token)
     if post_init:
@@ -219,5 +291,7 @@ def build_application(token: str, bot_data: dict, post_init=None) -> Application
     app.add_handler(CommandHandler("target", _cmd_target))
     app.add_handler(CommandHandler("check", _cmd_check))
     app.add_handler(CommandHandler("status", _cmd_status))
+    app.add_handler(CommandHandler("clear", _cmd_clear))
+    app.add_handler(CommandHandler("sync", _cmd_sync))
 
     return app
