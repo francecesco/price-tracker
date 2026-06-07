@@ -145,6 +145,7 @@ Tutti i comandi sono accessibili solo dall'utente il cui ID corrisponde a `TELEG
 | `/add <url>` | `/add https://www.amazon.it/dp/B09XS7JWHH` | Aggiunge un prodotto manualmente tramite URL Amazon |
 | `/list` | `/list` | Mostra tutti i prodotti con ID, prezzo attuale e target |
 | `/target <id> <prezzo>` | `/target 3 199.99` oppure `/target 3 199,99` | Imposta o aggiorna il prezzo target (accetta sia `.` che `,` come separatore decimale) |
+| `/targetall <sconto%>` | `/targetall 20` | Imposta il target di **tutti** i prodotti al prezzo attuale meno la percentuale indicata (es. 20% → target = prezzo × 0.80) |
 | `/remove <id>` | `/remove 3` | Rimuove definitivamente un prodotto dal tracciamento |
 
 ### Controllo e stato

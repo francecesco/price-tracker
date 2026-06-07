@@ -28,6 +28,7 @@ async def _cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/list — mostra tutti i prodotti\n"
         "/remove <id> — rimuovi prodotto\n"
         "/target <id> <prezzo> — imposta target\n"
+        "/targetall <sconto%> — imposta target per tutti (-X%)\n"
         "/check — controlla prezzi ora\n"
         "/clear conferma — svuota il database\n"
         "/status — stato del bot"
@@ -296,6 +297,44 @@ async def _cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Errore: {e}")
 
 
+@_owner_only
+async def _cmd_targetall(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from database import get_all_products, update_product_target
+
+    if not context.args:
+        await update.message.reply_text(
+            "Uso: /targetall <sconto%>\n"
+            "Esempio: /targetall 20 → imposta il target al 20% di sconto sul prezzo attuale"
+        )
+        return
+
+    db_path = context.bot_data["db_path"]
+
+    try:
+        discount = float(context.args[0].replace(",", "."))
+        if not 1 <= discount <= 99:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text("Sconto non valido. Inserisci un numero tra 1 e 99.")
+        return
+
+    products = get_all_products(db_path)
+    updated, skipped = 0, 0
+
+    for p in products:
+        if p.current_price:
+            target = round(p.current_price * (1 - discount / 100), 2)
+            update_product_target(db_path, p.id, target)
+            updated += 1
+        else:
+            skipped += 1
+
+    msg = f"🎯 Target impostato al -{discount:.0f}% per {updated} prodotti."
+    if skipped:
+        msg += f"\n⚠️ {skipped} prodotti saltati (prezzo non ancora rilevato)."
+    await update.message.reply_text(msg)
+
+
 def build_application(token: str, bot_data: dict, post_init=None) -> Application:
     builder = Application.builder().token(token)
     if post_init:
@@ -312,6 +351,7 @@ def build_application(token: str, bot_data: dict, post_init=None) -> Application
     app.add_handler(CommandHandler("check", _cmd_check))
     app.add_handler(CommandHandler("status", _cmd_status))
     app.add_handler(CommandHandler("clear", _cmd_clear))
+    app.add_handler(CommandHandler("targetall", _cmd_targetall))
     app.add_handler(CommandHandler("sync", _cmd_sync))
     app.add_handler(CommandHandler("debug", _cmd_debug))
 
