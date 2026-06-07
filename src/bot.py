@@ -276,6 +276,31 @@ async def _cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@_owner_only
+async def _cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import requests
+    from bs4 import BeautifulSoup
+    from scraper import _extract_items_from_wishlist_page, _HEADERS
+
+    wishlist_url = context.bot_data["wishlist_url"]
+    base_url = wishlist_url.split("?")[0]
+    lines = [f"🔍 *Debug wishlist*\nURL base: `{base_url}`\n"]
+
+    for page in range(1, 4):
+        page_url = wishlist_url if page == 1 else f"{base_url}?page={page}"
+        try:
+            r = requests.get(page_url, headers=_HEADERS, timeout=15)
+            soup = BeautifulSoup(r.text, "html.parser")
+            items = _extract_items_from_wishlist_page(soup)
+            sample = ", ".join(i["asin"] for i in items[:3])
+            lines.append(f"*Pagina {page}*: {len(items)} prodotti → {sample or 'nessuno'}")
+        except Exception as e:
+            lines.append(f"*Pagina {page}*: errore — {e}")
+            break
+
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+
+
 def build_application(token: str, bot_data: dict, post_init=None) -> Application:
     builder = Application.builder().token(token)
     if post_init:
@@ -293,5 +318,6 @@ def build_application(token: str, bot_data: dict, post_init=None) -> Application
     app.add_handler(CommandHandler("status", _cmd_status))
     app.add_handler(CommandHandler("clear", _cmd_clear))
     app.add_handler(CommandHandler("sync", _cmd_sync))
+    app.add_handler(CommandHandler("debug", _cmd_debug))
 
     return app
